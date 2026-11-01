@@ -130,7 +130,7 @@ python -m src.main
 
 ### Running Tests
 
-Run the starter tests with:
+Run all tests (2 starter + 13 extension tests) with:
 
 ```bash
 pytest
@@ -808,6 +808,245 @@ Chill Lofi, High-Energy Pop, capitalized-labels, impossible-targets, empty-profi
 ### Earlier experiment (Phase 2): genre 2.0 → 1.5
 
 The original recipe had genre at 2.0. That made Gym Hero (intense, energy 0.93) the #2 pick for a "pop genre, chill mood" listener, purely because it is pop. Lowering genre to 1.5 drops it to #5 without changing the Chill Lofi or Deep Intense Rock rankings. Any genre weight between 1.0 and about 1.6 works. This change was kept and is part of the final recipe.
+
+---
+
+## Optional Extensions
+
+All four optional challenges are implemented. Every extension is **opt-in**: with no flags, the output is byte-for-byte identical to the samples above. (I checked this by diffing all 11 profiles before and after.) Run the tests with `pytest`. All 15 pass: the 2 starter tests plus 13 for the extensions in `tests/test_extensions.py`.
+
+| Challenge | How to use it |
+|---|---|
+| 1. Advanced song features | New preferences: `popularity`, `release_decade`, `mood_tags`, `speechiness`, `liveness`. Try `python -m src.main extended`. |
+| 2. Multiple scoring modes | `--mode balanced` (default), `genre-first`, `mood-first` or `energy-focused` |
+| 3. Diversity penalty | `--diverse` |
+| 4. Visual summary table | `--table` |
+
+The flags combine, e.g. `python -m src.main chill-lofi --mode mood-first --diverse --table`.
+
+### Challenge 1: Advanced song features
+
+`data/songs.csv` gained five columns:
+
+| Column | Range | Scoring rule (skipped unless the user sets a target) |
+|---|---|---|
+| `popularity` | 0–100 | `0.3 × (1 − gap / 100)` |
+| `release_decade` | 1970–2020 | `0.4 × (1 − gap / 40)`, so 4 decades away = 0 |
+| `mood_tags` | 3 tags per song, e.g. `sad;rainy;bittersweet` | **+0.3 per shared tag**, max 3 tags (0.9), capitals ignored |
+| `speechiness` | 0–1 (sung → spoken/rap) | `0.2 × (1 − gap)` |
+| `liveness` | 0–1 (studio → live crowd) | `0.1 × (1 − gap)` |
+
+**Tags solve part of an earlier problem.** The adversarial "sad but energetic" listener couldn't say *sad*, because no song has that mood label. With `mood_tags: ["sad", "dark"]`, Iron Requiem (tagged `aggressive;dark;sad`) now wins by a clear margin: 1.87 vs. 1.24, where before it led by just 0.03. Happy-sounding Gym Hero is still #3, though. Tags only help songs that carry the tag; they don't fix the energy-dominance bias.
+
+<details><summary><code>python -m src.main nostalgic-80s-deep-cuts</code></summary>
+
+```text
+$ python -m src.main nostalgic-80s-deep-cuts
+Loading songs from data/songs.csv...
+Loaded songs: 18
+
+================================================================
+Profile: nostalgic-80s-deep-cuts
+  energy=0.7, release_decade=1980, popularity=40, mood_tags=['nostalgic', 'mysterious', 'late-night']
+================================================================
+
+#1  Night Drive Loop — Neon Echo
+    synthwave / moody    Score: 2.48
+      • mood tags: nostalgic, mysterious, late-night (+0.90)
+      • energy 0.75 vs target 0.7 (+0.95)
+      • popularity 64 vs target 40 (+0.23)
+      • release_decade 1980s vs target 1980s (+0.40)
+
+#2  Rooftop Lights — Indigo Parade
+    indie pop / happy    Score: 1.54
+      • mood tags: nostalgic (+0.30)
+      • energy 0.76 vs target 0.7 (+0.94)
+      • popularity 73 vs target 40 (+0.20)
+      • release_decade 2010s vs target 1980s (+0.10)
+
+#3  Dusty Porch Light — Hollow Creek
+    country / nostalgic    Score: 1.51
+      • mood tags: nostalgic (+0.30)
+      • energy 0.45 vs target 0.7 (+0.75)
+      • popularity 52 vs target 40 (+0.26)
+      • release_decade 2000s vs target 1980s (+0.20)
+
+#4  Iron Requiem — Black Cinder
+    metal / angry    Score: 1.42
+      • energy 0.97 vs target 0.7 (+0.73)
+      • popularity 45 vs target 40 (+0.28)
+      • release_decade 1980s vs target 1980s (+0.40)
+
+#5  Island Drift — Sun Harbor
+    reggae / laid-back    Score: 1.39
+      • energy 0.55 vs target 0.7 (+0.85)
+      • popularity 60 vs target 40 (+0.24)
+      • release_decade 1970s vs target 1980s (+0.30)
+
+================================================================
+```
+
+</details>
+
+Night Drive Loop wins clearly. It's the only song that matches all three tags *and* the 1980s.
+
+### Challenge 2: Multiple scoring modes (Strategy pattern)
+
+Each mode is a `ScoringMode` object holding one set of weights. `score_song` and `recommend_songs` accept any mode, so switching strategies never touches the ranking code. The design discussion is in [`ai_interactions.md`](ai_interactions.md#design-pattern-sf10).
+
+| Mode | Weights | Use when… |
+|---|---|---|
+| `balanced` | genre 1.5, mood 1.0, energy 1.0 (the original recipe) | default |
+| `genre-first` | genre **3.5** (more than mood + all 5 core numbers = 3.4) | "I only listen to rock" |
+| `mood-first` | mood **2.5**, genre 0.75 | "I want something chill, any genre" |
+| `energy-focused` | energy **2.5**, tempo 0.4, genre 0.5, mood 0.5 | "Match the vibe, ignore the labels" |
+
+**The same conflicted listener (pop genre, chill mood) under each mode** (output condensed to one line per song; run the command for the full reasons):
+
+```text
+Profile: pop-genre-chill-mood
+#1  Midnight Coding — LoRoom              lofi / chill    Score: 3.17
+#2  Library Rain — Paper Lanterns         lofi / chill    Score: 3.05
+#3  Sunrise City — Neon Echo              pop / happy    Score: 3.00
+#4  Spacewalk Thoughts — Orbit Bloom      ambient / chill    Score: 2.92
+#5  Gym Hero — Max Pulse                  pop / intense    Score: 2.81
+
+Profile: pop-genre-chill-mood
+  mode=genre-first (Genre outweighs mood + all core numbers combined (3.5 > 3.4).)
+#1  Sunrise City — Neon Echo              pop / happy    Score: 5.00
+#2  Gym Hero — Max Pulse                  pop / intense    Score: 4.81
+#3  Rooftop Lights — Indigo Parade        indie pop / happy    Score: 3.42
+#4  Midnight Coding — LoRoom              lofi / chill    Score: 3.17
+#5  Library Rain — Paper Lanterns         lofi / chill    Score: 3.05
+
+Profile: pop-genre-chill-mood
+  mode=mood-first (Mood is king; genre is a light tiebreaker.)
+#1  Midnight Coding — LoRoom              lofi / chill    Score: 4.67
+#2  Library Rain — Paper Lanterns         lofi / chill    Score: 4.55
+#3  Spacewalk Thoughts — Orbit Bloom      ambient / chill    Score: 4.42
+#4  Coffee Shop Stories — Slow Stereo     jazz / relaxed    Score: 3.35
+#5  Sunrise City — Neon Echo              pop / happy    Score: 2.25
+
+Profile: pop-genre-chill-mood
+  mode=energy-focused (Mostly how the song feels: energy and tempo lead, labels matter little.)
+#1  Midnight Coding — LoRoom              lofi / chill    Score: 4.03
+#2  Library Rain — Paper Lanterns         lofi / chill    Score: 3.89
+#3  Coffee Shop Stories — Slow Stereo     jazz / relaxed    Score: 3.75
+#4  Spacewalk Thoughts — Orbit Bloom      ambient / chill    Score: 3.66
+#5  Dusty Porch Light — Hollow Creek      country / nostalgic    Score: 3.60
+```
+
+- **genre-first** puts both pop songs on top, even intense Gym Hero.
+- **mood-first** fills #1–4 with chill and relaxed songs.
+- **energy-focused** ignores pop entirely and returns calm songs of any genre.
+
+Each mode answers the conflict a different way, and the user decides which one they meant.
+
+### Challenge 3: Diversity penalty
+
+With `--diverse`, the top k is built **one pick at a time**. Each remaining song loses **0.6 points per song by the same artist** and **0.4 points per song of the same genre** already in the list. The best adjusted score is picked, and the process repeats. The penalty shows up as its own reason, so nothing is hidden.
+
+<details><summary><code>python -m src.main chill-lofi --diverse --table</code></summary>
+
+```text
+$ python -m src.main chill-lofi --diverse --table
+Loading songs from data/songs.csv...
+Loaded songs: 18
+
+Profile: chill-lofi
+  genre=lofi, mood=chill, energy=0.38, acousticness=0.8, valence=0.58, instrumentalness=0.85, tempo_bpm=76
+  diversity penalty ON
++----+------------------------+----------------------+-------+------------------------------------------------+
+|  # | Song                   | Genre / Mood         | Score | Why (reasons)                                  |
++====+========================+======================+=======+================================================+
+|  1 | Library Rain — Paper   | lofi / chill         |  4.81 | genre match: lofi (+1.50)                      |
+|    | Lanterns               |                      |       | mood match: chill (+1.00)                      |
+|    |                        |                      |       | energy 0.35 vs target 0.38 (+0.97)             |
+|    |                        |                      |       | acousticness 0.86 vs target 0.8 (+0.56)        |
+|    |                        |                      |       | valence 0.6 vs target 0.58 (+0.39)             |
+|    |                        |                      |       | instrumentalness 0.9 vs target 0.85 (+0.19)    |
+|    |                        |                      |       | tempo_bpm 72 vs target 76 (+0.19)              |
++----+------------------------+----------------------+-------+------------------------------------------------+
+|  2 | Midnight Coding —      | lofi / chill         |  4.39 | genre match: lofi (+1.50)                      |
+|    | LoRoom                 |                      |       | mood match: chill (+1.00)                      |
+|    |                        |                      |       | energy 0.42 vs target 0.38 (+0.96)             |
+|    |                        |                      |       | acousticness 0.71 vs target 0.8 (+0.55)        |
+|    |                        |                      |       | valence 0.56 vs target 0.58 (+0.39)            |
+|    |                        |                      |       | instrumentalness 0.85 vs target 0.85 (+0.20)   |
+|    |                        |                      |       | tempo_bpm 78 vs target 76 (+0.20)              |
+|    |                        |                      |       | diversity: 1 lofi song(s) already picked       |
+|    |                        |                      |       |   (-0.40)                                      |
++----+------------------------+----------------------+-------+------------------------------------------------+
+|  3 | Spacewalk Thoughts —   | ambient / chill      |  3.90 | genre close enough: ambient (+0.75)            |
+|    | Orbit Bloom            |                      |       | mood match: chill (+1.00)                      |
+|    |                        |                      |       | energy 0.28 vs target 0.38 (+0.90)             |
+|    |                        |                      |       | acousticness 0.92 vs target 0.8 (+0.53)        |
+|    |                        |                      |       | valence 0.65 vs target 0.58 (+0.37)            |
+|    |                        |                      |       | instrumentalness 0.95 vs target 0.85 (+0.18)   |
+|    |                        |                      |       | tempo_bpm 60 vs target 76 (+0.17)              |
++----+------------------------+----------------------+-------+------------------------------------------------+
+|  4 | Coffee Shop Stories —  | jazz / relaxed       |  3.47 | genre close enough: jazz (+0.75)               |
+|    | Slow Stereo            |                      |       | mood close enough: relaxed (+0.50)             |
+|    |                        |                      |       | energy 0.37 vs target 0.38 (+0.99)             |
+|    |                        |                      |       | acousticness 0.89 vs target 0.8 (+0.55)        |
+|    |                        |                      |       | valence 0.71 vs target 0.58 (+0.35)            |
+|    |                        |                      |       | instrumentalness 0.7 vs target 0.85 (+0.17)    |
+|    |                        |                      |       | tempo_bpm 90 vs target 76 (+0.17)              |
++----+------------------------+----------------------+-------+------------------------------------------------+
+|  5 | Focus Flow — LoRoom    | lofi / focused       |  2.95 | genre match: lofi (+1.50)                      |
+|    |                        |                      |       | mood close enough: focused (+0.50)             |
+|    |                        |                      |       | energy 0.4 vs target 0.38 (+0.98)              |
+|    |                        |                      |       | acousticness 0.78 vs target 0.8 (+0.59)        |
+|    |                        |                      |       | valence 0.59 vs target 0.58 (+0.40)            |
+|    |                        |                      |       | instrumentalness 0.88 vs target 0.85 (+0.19)   |
+|    |                        |                      |       | tempo_bpm 80 vs target 76 (+0.19)              |
+|    |                        |                      |       | diversity: 1 song(s) by LoRoom already picked  |
+|    |                        |                      |       |   (-0.60)                                      |
+|    |                        |                      |       | diversity: 2 lofi song(s) already picked       |
+|    |                        |                      |       |   (-0.80)                                      |
++----+------------------------+----------------------+-------+------------------------------------------------+
+Top pick: Library Rain (4.81). Genres in list: 3, artists: 4.
+```
+
+</details>
+
+**Effect:**
+- **Chill Lofi:** Focus Flow is the 2nd LoRoom track and the 3rd lofi track. Its score becomes 4.35 − 0.60 − 0.80 = 2.95, and it drops from #3 to #5. The ambient and jazz songs move up.
+- **pop/happy:** Night Drive Loop (Neon Echo, the same artist as #1) is replaced by Storm Runner.
+- **The #1 song never changes**, because nothing has been picked yet when it's chosen.
+
+### Challenge 4: Visual summary table
+
+`--table` prints an ASCII table with no extra libraries. It has a **Why (reasons)** column listing every reason, wrapped to fit, and a one-line summary of how many genres and artists made the list.
+
+```text
+$ python -m src.main pop/happy --table
+Loading songs from data/songs.csv...
+Loaded songs: 18
+
+Profile: pop/happy
+  genre=pop, mood=happy, energy=0.8
++----+------------------------+----------------------+-------+------------------------------------------------+
+|  # | Song                   | Genre / Mood         | Score | Why (reasons)                                  |
++====+========================+======================+=======+================================================+
+|  1 | Sunrise City — Neon    | pop / happy          |  3.48 | genre match: pop (+1.50)                       |
+|    | Echo                   |                      |       | mood match: happy (+1.00)                      |
+|    |                        |                      |       | energy 0.82 vs target 0.8 (+0.98)              |
++----+------------------------+----------------------+-------+------------------------------------------------+
+|  2 | Gym Hero — Max Pulse   | pop / intense        |  2.37 | genre match: pop (+1.50)                       |
+|    |                        |                      |       | energy 0.93 vs target 0.8 (+0.87)              |
++----+------------------------+----------------------+-------+------------------------------------------------+
+|  3 | Rooftop Lights —       | indie pop / happy    |  1.96 | mood match: happy (+1.00)                      |
+|    | Indigo Parade          |                      |       | energy 0.76 vs target 0.8 (+0.96)              |
++----+------------------------+----------------------+-------+------------------------------------------------+
+|  4 | Concrete Poetry —      | hip-hop / confident  |  0.98 | energy 0.78 vs target 0.8 (+0.98)              |
+|    | Verse Theory           |                      |       |                                                |
++----+------------------------+----------------------+-------+------------------------------------------------+
+|  5 | Night Drive Loop —     | synthwave / moody    |  0.95 | energy 0.75 vs target 0.8 (+0.95)              |
+|    | Neon Echo              |                      |       |                                                |
++----+------------------------+----------------------+-------+------------------------------------------------+
+Top pick: Sunrise City (3.48). Genres in list: 4, artists: 4.
+```
 
 ---
 

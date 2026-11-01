@@ -2,16 +2,24 @@
 Command line runner for the Music Recommender Simulation.
 
 Usage (from the project root):
-    python -m src.main                     # default "pop/happy" profile
-    python -m src.main chill-lofi          # any profile name below
-    python -m src.main core                # the three core profiles
-    python -m src.main adversarial         # all edge-case profiles
-    python -m src.main all                 # everything
+    python -m src.main                         # default "pop/happy" profile
+    python -m src.main chill-lofi              # any profile name below
+    python -m src.main core                    # the three core profiles
+    python -m src.main adversarial             # all edge-case profiles
+    python -m src.main extended                # profiles using the advanced features
+    python -m src.main all                     # default + core + adversarial
+
+Options (combine freely):
+    --mode {balanced,genre-first,mood-first,energy-focused}   ranking strategy
+    --diverse                                                 penalize repeated artists/genres
+    --table                                                   compact ASCII table output
 """
 
+import argparse
 import sys
+import textwrap
 
-from src.recommender import load_songs, recommend_songs
+from src.recommender import DEFAULT_MODE, MODES, load_songs, recommend_songs
 
 # Starter default: only genre, mood and energy are given, so every other
 # numeric feature is skipped (no preference).
@@ -64,8 +72,30 @@ ADVERSARIAL = {
     "strict-dealbreaker": {"genre": "rock", "energy": 0.9, "max_energy": 0.3},
 }
 
-PROFILES = {**DEFAULT, **CORE, **ADVERSARIAL}
-GROUPS = {"core": CORE, "adversarial": ADVERSARIAL, "all": PROFILES}
+# Profiles that use the advanced features (Challenge 1).
+EXTENDED = {
+    # The adversarial "sad-but-energetic" listener again, now able to say "sad"
+    # through mood tags instead of a mood label the catalog doesn't have.
+    "sad-energetic-tagged": {"mood": "sad", "energy": 0.9, "valence": 0.1, "mood_tags": ["sad", "dark"]},
+    # A crate-digger: 80s, not too mainstream, nostalgic late-night feel.
+    "nostalgic-80s-deep-cuts": {
+        "energy": 0.7, "release_decade": 1980, "popularity": 40,
+        "mood_tags": ["nostalgic", "mysterious", "late-night"],
+    },
+    # Wants current chart hits with lots of lyrics and a live, crowd feel.
+    "wordy-live-hits": {
+        "energy": 0.8, "popularity": 85, "release_decade": 2020,
+        "speechiness": 0.3, "liveness": 0.35,
+    },
+}
+
+PROFILES = {**DEFAULT, **CORE, **ADVERSARIAL, **EXTENDED}
+GROUPS = {
+    "core": CORE,
+    "adversarial": ADVERSARIAL,
+    "extended": EXTENDED,
+    "all": {**DEFAULT, **CORE, **ADVERSARIAL},
+}
 
 WIDTH = 64
 
@@ -76,11 +106,19 @@ def describe(prefs: dict) -> str:
     return ", ".join(f"{k}={v}" for k, v in prefs.items() if k not in skip) or "(no preferences)"
 
 
-def print_recommendations(name: str, prefs: dict, recommendations: list) -> None:
+def header_lines(name: str, prefs: dict, settings: str) -> list:
+    """Profile name, its preferences, and the non-default settings (if any)."""
+    lines = [f"Profile: {name}", f"  {describe(prefs)}"]
+    if settings:
+        lines.append(f"  {settings}")
+    return lines
+
+
+def print_recommendations(name: str, prefs: dict, recommendations: list, settings: str = "") -> None:
     """Print a ranked, readable block: title, artist, genre/mood, score and each reason."""
     print("=" * WIDTH)
-    print(f"Profile: {name}")
-    print(f"  {describe(prefs)}")
+    for line in header_lines(name, prefs, settings):
+        print(line)
     print("=" * WIDTH)
     for rank, (song, score, explanation) in enumerate(recommendations, start=1):
         print(f"\n#{rank}  {song['title']} — {song['artist']}")
@@ -90,21 +128,91 @@ def print_recommendations(name: str, prefs: dict, recommendations: list) -> None
     print("\n" + "=" * WIDTH)
 
 
+def reasons_of(explanation: str) -> list:
+    """Split the explanation string back into individual reasons."""
+    return explanation.split("; ") if explanation else ["(no matching preferences)"]
+
+
+def print_table(name: str, prefs: dict, recommendations: list, settings: str = "") -> None:
+    """Print the top results as an ASCII table whose last column lists every reason (Challenge 4)."""
+    headers = ["#", "Song", "Genre / Mood", "Score", "Why (reasons)"]
+    widths = [2, 22, 20, 5, 46]
+    rows = []
+    for rank, (song, score, explanation) in enumerate(recommendations, start=1):
+        why = []
+        for reason in reasons_of(explanation):
+            why += textwrap.wrap(reason, widths[4], subsequent_indent="  ")
+        rows.append([
+            [str(rank)],
+            textwrap.wrap(f"{song['title']} — {song['artist']}", widths[1]),
+            textwrap.wrap(f"{song['genre']} / {song['mood']}", widths[2]),
+            [f"{score:.2f}"],
+            why,
+        ])
+
+    border = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+
+    def line(cells):
+        return "| " + " | ".join(
+            (c.rjust(w) if i in (0, 3) else c.ljust(w)) for i, (c, w) in enumerate(zip(cells, widths))
+        ) + " |"
+
+    for text in header_lines(name, prefs, settings):
+        print(text)
+    print(border)
+    print(line(headers))
+    print(border.replace("-", "="))
+    for row in rows:
+        for i in range(max(len(cell) for cell in row)):
+            print(line([cell[i] if i < len(cell) else "" for cell in row]))
+        print(border)
+    if recommendations:
+        top = recommendations[0]
+        print(f"Top pick: {top[0]['title']} ({top[1]:.2f}). "
+              f"Genres in list: {len({s['genre'] for s, _, _ in recommendations})}, "
+              f"artists: {len({s['artist'] for s, _, _ in recommendations})}.")
+    print()
+
+
+def parse_args(argv=None) -> argparse.Namespace:
+    """Read the profile name and options from the command line."""
+    parser = argparse.ArgumentParser(description="Music Recommender Simulation")
+    parser.add_argument("profile", nargs="?", default="pop/happy",
+                        help=f"profile or group: {', '.join([*GROUPS, *PROFILES])}")
+    parser.add_argument("--mode", choices=list(MODES), default=DEFAULT_MODE.name,
+                        help="ranking strategy (default: balanced)")
+    parser.add_argument("--diverse", action="store_true",
+                        help="penalize songs whose artist or genre is already in the list")
+    parser.add_argument("--table", action="store_true", help="show results as an ASCII table")
+    parser.add_argument("-k", type=int, default=5, help="number of recommendations (default: 5)")
+    return parser.parse_args(argv)
+
+
 def main() -> None:
-    """Load the catalog, pick a profile or group from argv (default pop/happy) and print each top 5."""
-    name = sys.argv[1] if len(sys.argv) > 1 else "pop/happy"
+    """Load the catalog, pick a profile or group (default pop/happy) and print each top k."""
+    args = parse_args()
+    name = args.profile
     selected = GROUPS.get(name) or ({name: PROFILES[name]} if name in PROFILES else None)
     if selected is None:
         choices = ", ".join([*GROUPS, *PROFILES])
         sys.exit(f"Unknown profile '{name}'. Choose from: {choices}")
 
+    mode = MODES[args.mode]
+    settings = ", ".join(
+        part for part in (
+            f"mode={mode.name} ({mode.description})" if mode is not DEFAULT_MODE else "",
+            "diversity penalty ON" if args.diverse else "",
+        ) if part
+    )
+    show = print_table if args.table else print_recommendations
+
     songs = load_songs("data/songs.csv")
     print(f"Loaded songs: {len(songs)}\n")
 
     for profile_name, prefs in selected.items():
-        recommendations = recommend_songs(prefs, songs, k=5)
-        print_recommendations(profile_name, prefs, recommendations)
-        if len(recommendations) < 5:
+        recommendations = recommend_songs(prefs, songs, k=args.k, mode=mode, diversity=args.diverse)
+        show(profile_name, prefs, recommendations, settings)
+        if len(recommendations) < args.k:
             print(f"(only {len(recommendations)} songs passed the filters)\n")
 
 

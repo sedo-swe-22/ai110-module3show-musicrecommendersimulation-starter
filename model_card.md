@@ -77,6 +77,15 @@ The best possible score is 4.9. Every point a song earns comes with a written re
 
 Danceability is loaded but not scored, because it mostly repeats valence and energy.
 
+**Advanced attributes (optional extension):**
+- `popularity` (0–100)
+- `release_decade` (1970–2020)
+- `mood_tags` (3 descriptive tags per song, such as "sad;rainy;bittersweet")
+- `speechiness` (sung vs. spoken)
+- `liveness` (studio vs. live)
+
+They are only scored when a listener asks for them, so the default results don't change.
+
 **What's represented:**
 - **15 genres:** lofi, pop, rock, ambient, jazz, synthwave, indie pop, hip-hop, country, classical, edm, r&b, metal, reggae, folk.
 - **14 moods:** chill, happy, intense, relaxed, moody, focused, confident, nostalgic, melancholy, euphoric, romantic, angry, laid-back, wistful.
@@ -118,6 +127,7 @@ Danceability is loaded but not scored, because it mostly repeats valence and ene
 - **"Middle" songs surface far more than extreme ones for random listeners.** In a simulation of 5,000 random listeners with no genre or mood preference, Midnight Coding appeared in 49% of top 5s, but Iron Requiem, Gym Hero and Neon Overdrive appeared in only 11–12%. The linear "1 − gap" closeness favors songs near the center of the range, so very intense or very quiet songs need equally extreme listeners to be found.
 - **Our own tests were biased toward high energy.** 7 of 11 test profiles asked for high energy, which is why Gym Hero looked over-recommended (8 of 11 top 5s) while four mid-energy songs never appeared. The evaluation was skewed, not just the model.
 - **Arbitrary tie-breaking.** Tied songs keep their CSV order, so an empty profile "recommends" the first five rows of the file.
+- **Popularity can feed a "rich get richer" loop.** The optional `popularity` feature rewards songs close to a target popularity. If many users asked for popular songs, already-popular songs would get recommended more and become more popular, and lesser-known artists would rarely surface. It's skipped unless a user asks for it, so the default profiles are unaffected.
 - **Extra work for the user.** Partial credit only works if users list "close enough" genres and moods themselves. A user who doesn't know to type "indie pop" never sees it as related to pop.
 - **Missing dimensions of taste.** There are no lyrics, language, era, artist familiarity or listening history, so the system can't learn that a stated preference is wrong, and it treats every listener's words at face value.
 
