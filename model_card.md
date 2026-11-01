@@ -117,6 +117,54 @@ Prompts:
 - **Repetition count:** how many top 5s each song appears in, across all 11 profiles.
 - **Explaining #1:** I asked the AI assistant to explain step by step why a song ranked #1 and to find the smallest weight change that would flip it.
 
+### Comparing profiles side by side
+
+Comparing every possible pair of 11 profiles would mean 55 comparisons, most of them uninformative. I compared **every pair of the four normal profiles** (6 pairs), plus **each edge case against its closest normal "twin"** (7 pairs). Each twin differs in only one or two settings, so any change in the output can be traced to that setting.
+
+**The four normal profiles against each other:**
+
+| Pair | Songs shared | What changed, and why it makes sense |
+|---|---|---|
+| **pop/happy vs. High-Energy Pop** | 3 of 5 | Both lists start with Sunrise City. In High-Energy Pop, Rooftop Lights jumps above Gym Hero, and the last two spots change from hip-hop/synthwave to an euphoric EDM song and a rock song. High-Energy Pop tells the system more: "indie pop is close enough", "euphoric is close enough", and "I want happy-sounding music" (valence 0.85). That extra detail lets the happy indie song beat the intense workout song. The basic pop/happy profile only mentions energy, so its #4–5 are just "whatever is closest to energy 0.8". **More detail = a better list, which is what should happen.** |
+| **pop/happy vs. Chill Lofi** | 0 of 5 | No overlap at all. These listeners disagree on everything: genre, mood, and energy (0.8 vs. 0.38). **Opposite tastes, opposite lists: correct.** |
+| **pop/happy vs. Deep Intense Rock** | 3 of 5 | Sunrise City, Gym Hero and Concrete Poetry appear in both, because both listeners want loud music (energy 0.8 vs. 0.92). But Sunrise City is #1 for pop/happy and only #5 for rock. The same loud songs are in the running, and the genre and mood labels decide the order. **Makes sense.** |
+| **High-Energy Pop vs. Chill Lofi** | 0 of 5 | A mirror image. High-Energy Pop's picks all have energy 0.76–0.95 and little acoustic sound. Chill Lofi's picks all have energy 0.28–0.42 and are mostly acoustic. The energetic profile goes for loud electronic tracks, the calm profile for soft, acoustic, mostly instrumental ones. **Exactly what the energy and acousticness targets are for.** |
+| **High-Energy Pop vs. Deep Intense Rock** | 3 of 5 | The most revealing pair. Both share Sunrise City, Gym Hero and Storm Runner, **in reversed order**: Sunrise City is #1 and Storm Runner #5 for pop, and the other way round for rock. Both want loud, non-acoustic music, so the same songs qualify. The genre label (pop vs. rock) and the happiness target (0.85 vs. 0.45) decide who wins. **Valid: this shows the labels and valence doing their job once energy has narrowed the field.** |
+| **Chill Lofi vs. Deep Intense Rock** | 0 of 5 | No overlap. Calm acoustic study music vs. loud aggressive guitar music. **Correct.** |
+
+**Each edge case against its normal twin:**
+
+| Pair | What changed, and why |
+|---|---|
+| **pop/happy vs. capitalized-labels** ("Pop"/"Happy") | The only difference is capital letters, yet Sunrise City falls from 3.48 to 0.98, Gym Hero disappears from the list, and a rock song enters. The system compares labels letter for letter, so "Pop" isn't "pop" and both bonuses vanish. **This does *not* make sense to a user. It's a bug.** |
+| **High-Energy Pop vs. pop-genre-chill-mood** | Same favorite genre, opposite mood and energy. The two pop songs drop from #1 and #3 to #3 and #5, and three calm, chill songs take over. The mood bonus plus the closeness points (up to 3.4 together) outweigh the genre bonus (1.5). **Makes sense: when someone asks for "pop, but chill", the chill part should matter most.** |
+| **Chill Lofi vs. lofi-but-intense** | Same genre, opposite mood and energy. Intense songs (Gym Hero, Storm Runner) push into the top 3, but calm lofi songs still hold #2, #4 and #5 on the genre bonus alone, even though their energy (0.35–0.42) is nowhere near the requested 0.95. **Only partly sensible.** The genre label is strong enough to keep songs that contradict the listener's energy. |
+| **Deep Intense Rock vs. sad-but-energetic** | Both want loud music, but the second profile has no genre and wants sad-sounding songs (valence 0.1). Storm Runner loses its rock and intense bonuses and drops to #2. Iron Requiem, the darkest-sounding loud song (valence 0.25), moves up to #1. **That part makes sense.** But happy-sounding Gym Hero (valence 0.77) still sits at #3, because "sadness" is worth so little next to energy. |
+| **Deep Intense Rock vs. strict-dealbreaker** | Same rock and energy 0.9 wishes, plus "nothing above energy 0.3". Every rock song is removed before scoring, and only an ambient track and a classical piece survive. **Correct by the rules, but unhelpful.** The listener contradicted themselves and the system never says so. |
+| **High-Energy Pop vs. impossible-targets** (energy 1.5) | An impossible target effectively means "as loud and non-acoustic as possible". The list switches to the most extreme songs (Iron Requiem 0.97, Neon Overdrive 0.95), and Sunrise City drops to #5 because nothing asks for pop or happiness. **Reasonable.** The system doesn't crash; it gives the closest real songs. |
+| **pop/happy vs. empty-profile** | With no preferences, every song scores 0 and the list is simply the first five rows of the file. Sunrise City is #1 only because it is the first row. **Not a valid recommendation.** The system should say "tell me more" instead. |
+
+### Why does "Gym Hero" keep showing up for people who just want Happy Pop?
+
+Think of the recommender as a judge holding a scorecard. For the basic "pop, happy, energy 0.8" listener, the card has only three lines:
+
+| Question on the scorecard | Points available | Gym Hero | Rooftop Lights |
+|---|---|---|---|
+| Is it labeled "pop"? | 1.5 | ✅ 1.5 | ❌ 0 (it's labeled "indie pop") |
+| Is it labeled "happy"? | 1.0 | ❌ 0 (it's labeled "intense") | ✅ 1.0 |
+| How close is its energy to 0.8? | up to 1.0 | 0.87 (energy 0.93) | 0.96 (energy 0.76) |
+| **Total** | | **2.37 → #2** | **1.96 → #3** |
+
+Gym Hero is a workout anthem, not a happy song. It beats a genuinely happy song for three reasons:
+
+1. **The "pop" sticker is worth more than the "happy" sticker** (1.5 vs. 1.0 points).
+2. **The judge reads stickers literally.** "Indie pop" isn't "pop", so the happy indie song gets nothing for genre.
+3. **Only two songs in the whole catalog carry the "pop" sticker.** Sunrise City takes #1, and Gym Hero automatically gets the next-best genre score.
+
+On top of that, Gym Hero is one of the loudest songs in the catalog, so it also scores well for anyone who asks for high energy (rock fans, workout listeners, even the "sad but energetic" profile). That's why it showed up in 8 of 11 lists.
+
+**How to make it go away:** tell the system more. The High-Energy Pop profile says "indie pop is close enough" and "I like happy-sounding music". With that, Rooftop Lights moves ahead of Gym Hero (3.86 vs. 3.76). The scoring isn't broken here. It can only judge on what the listener actually tells it.
+
 **What surprised me:**
 
 1. **One song shows up almost everywhere: Gym Hero, in 8 of 11 top 5s.** Sunrise City and Storm Runner appear in 7 each. The genre weight isn't the main cause, because Gym Hero got the genre bonus in only 4 of its 8 appearances. It is an extreme song (energy 0.93, almost no acoustic sound or instrumental passages), so it fits *any* high-energy request well. 7 of my 11 profiles asked for high energy, and only about 5 songs in the catalog are that loud. Meanwhile 4 songs (r&b, reggae, country and folk, all mid-energy) never appeared in any top 5, because no profile asked for mid-energy music. Part of the repetition comes from how I designed the tests, and part from the small catalog.
