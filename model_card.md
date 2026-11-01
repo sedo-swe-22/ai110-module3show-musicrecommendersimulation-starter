@@ -82,14 +82,17 @@ Prompts:
 
 ## 6. Limitations and Bias 
 
-Where the system struggles or behaves unfairly. 
+**Main weakness: the score is really an energy score, so listeners who care about something else get ignored.** Energy carries the biggest weight (1.0), and in this catalog acousticness (r = −0.97) and tempo (r = 0.90) move almost in lockstep with it, so about 1.8 of the 2.4 numeric points measure the same "calm vs. loud" quality. In the stress test, a "sad but energetic" listener (valence target 0.1) got Gym Hero, one of the happiest-sounding songs in the catalog (valence 0.77), at #3, just because its energy matched. Happiness (valence) is worth only 0.4, so the "sad" half of the request barely counted. The catalog makes it worse: no song has energy between 0.55 and 0.75, so a listener who wants medium-energy music (say 0.65) has only two songs within 0.1 of their target, and the labels end up deciding almost everything. Doubling the energy weight in our experiment raised energy's share to about 54% of the score and made this worse, which creates an energy "filter bubble" where users are sorted into "calm" or "loud" and rarely shown songs that match their mood from the other side.
 
-Prompts:  
+**Other biases and limitations we observed:**
 
-- Features it does not consider  
-- Genres or moods that are underrepresented  
-- Cases where the system overfits to one preference  
-- Ways the scoring might unintentionally favor some users  
+- **Exact-label matching.** "Pop" ≠ "pop" (matching is case-sensitive), and "sad" earns nothing even though "melancholy" exists. Users who describe their taste in different words than the catalog uses lose the genre and mood bonuses silently.
+- **Unequal genre coverage creates uneven experiences.** 13 of 15 genres have exactly one song. A lofi fan gets a coherent, all-lofi top 5 (arguably a filter bubble of its own). A folk, country or classical fan gets one match and then four songs chosen by energy alone.
+- **"Middle" songs surface far more than extreme ones for random listeners.** In a simulation of 5,000 random listeners with no genre or mood preference, Midnight Coding appeared in 49% of top 5s, but Iron Requiem, Gym Hero and Neon Overdrive appeared in only 11–12%. The linear "1 − gap" closeness favors songs near the center of the range, so very intense or very quiet songs need equally extreme listeners to be found.
+- **Our own tests were biased toward high energy.** 7 of 11 test profiles asked for high energy, which is why Gym Hero looked over-recommended (8 of 11 top 5s) while four mid-energy songs never appeared. The evaluation was skewed, not just the model.
+- **Arbitrary tie-breaking.** Tied songs keep their CSV order, so an empty profile "recommends" the first five rows of the file.
+- **Extra work for the user.** Partial credit only works if users list "close enough" genres and moods themselves. A user who doesn't know to type "indie pop" never sees it as related to pop.
+- **Missing dimensions of taste.** There are no lyrics, language, era, artist familiarity or listening history, so the system can't learn that a stated preference is wrong, and it treats every listener's words at face value.
 
 ---
 

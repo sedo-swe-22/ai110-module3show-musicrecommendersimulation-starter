@@ -735,11 +735,75 @@ The three consistent profiles all behave as intended. Every failure comes from c
 
 ## Experiments You Tried
 
-Use this section to document the experiments you ran. For example:
+### Experiment 1: Weight shift (double energy, halve genre)
 
-- What happened when you changed the weight on genre from 2.0 to 0.5
-- What happened when you added tempo or valence to the score
-- How did your system behave for different types of users
+**Change:** in `src/recommender.py`, `NUMERIC_WEIGHTS["energy"]` went from 1.0 to **2.0** and `GENRE_WEIGHT` from 1.5 to **0.75** (so an also-OK genre earns 0.375). Nothing else changed.
+
+**Is the math still valid?** Yes:
+- **Bounded components:** every closeness term is still `weight × (1 − gap)` with the gap capped so closeness stays between 0 and 1. Each component therefore stays between 0 and its weight.
+- **New maximum:** 0.75 + 1.0 + 2.0 + 0.6 + 0.4 + 0.2 + 0.2 = **5.15** (was 4.9). The highest score in any run was 5.10.
+- **Hand check (Deep Intense Rock):**
+  - Storm Runner: 0.75 + 1.0 + 2(0.99) + 0.588 + 0.388 + 0.200 + 0.196 = **5.102**. The code printed 5.10.
+  - Gym Hero: 0 + 1.0 + 2(0.99) + 0.582 + 0.272 + 0.192 + 0.161 = **4.187**. The code printed 4.19.
+  - Iron Requiem: 0.375 + 0.5 + 2(0.95) + 0.576 + 0.320 + 0.190 + 0.161 = **4.022**. The code printed 4.02.
+
+**Before vs. after** (profiles whose top 5 changed; `<--` marks a changed position):
+
+```text
+                 BASELINE (genre 1.5, energy 1.0)  |  EXPERIMENT (genre 0.75, energy 2.0)
+pop/happy
+  1. Sunrise City         3.48  |  Sunrise City         3.71
+  2. Gym Hero             2.37  |  Rooftop Lights       2.92  <--
+  3. Rooftop Lights       1.96  |  Gym Hero             2.49  <--
+deep-intense-rock
+  1. Storm Runner         4.86  |  Storm Runner         5.10
+  2. Iron Requiem         3.45  |  Gym Hero             4.19  <--
+  3. Gym Hero             3.20  |  Iron Requiem         4.02  <--
+  4. Concrete Poetry      2.04  |  Neon Overdrive       2.97  <--
+pop-genre-chill-mood
+  1. Midnight Coding      3.17  |  Midnight Coding      4.15
+  2. Library Rain         3.05  |  Library Rain         4.00
+  3. Sunrise City         3.00  |  Spacewalk Thoughts   3.80  <--
+  4. Spacewalk Thoughts   2.92  |  Coffee Shop Stories  3.57  <--
+  5. Gym Hero             2.81  |  Dusty Porch Light    3.20  <--
+lofi-but-intense
+  1. Gym Hero             1.98  |  Gym Hero             2.96
+  2. Midnight Coding      1.97  |  Storm Runner         2.92  <--
+  3. Storm Runner         1.96  |  Neon Overdrive       2.00  <--
+  4. Focus Flow           1.95  |  Iron Requiem         1.96  <--
+  5. Library Rain         1.90  |  Sunrise City         1.74  <--
+sad-but-energetic
+  1. Iron Requiem         1.27  |  Storm Runner         2.23  <--
+  2. Storm Runner         1.24  |  Iron Requiem         2.20  <--
+  4. Night Drive Loop     1.09  |  Neon Overdrive       1.98  <--
+```
+
+Chill Lofi, High-Energy Pop, capitalized-labels, impossible-targets, empty-profile and strict-dealbreaker kept the **same order**, with only the scores changing.
+
+**More accurate, or just different?**
+
+| Profile | What changed | Verdict |
+|---|---|---|
+| pop/happy | Rooftop Lights (happy) passes Gym Hero (intense) | ✅ More accurate: mood now beats a bare genre label |
+| lofi-but-intense | The 5-way tie with calm lofi songs is gone; all five are intense, high-energy songs | ✅ More accurate: energy and mood agreed, and now they win |
+| deep-intense-rock | Gym Hero (pop) passes Iron Requiem (metal) for #2 | ❌ Worse: a rock fan would pick metal over a pop workout song |
+| pop-genre-chill-mood | No pop songs left at all. Dusty Porch Light (country, nostalgic) enters at #5. | ❌ Overcorrected: the user's stated genre is ignored |
+| sad-but-energetic | Same loud songs, reshuffled | ➖ Just different. Still no actually sad songs. |
+| 6 other profiles | Same order | ➖ No change |
+
+**Conclusion:** the change made the results **different, not better overall**. That's 2 improvements, 2 regressions and 7 profiles effectively unchanged.
+- **Where it helps:** halving genre fixes cases where the genre label overrode what the listener actually described.
+- **Where it hurts:** it breaks cases where the genre *is* the point, like rock → metal, or where the user named a genre on purpose.
+
+**Side effects:**
+- **Repetition barely moved.** Gym Hero went from 8 top-5 appearances (out of 11) to 7. This confirms that the repetition comes from the small catalog and the many high-energy test profiles, not from the genre weight.
+- **Energy now dominates even more.** It's 2.0 of 5.15 points. Counting acousticness and tempo, which track energy closely in this catalog (r = −0.97 and 0.90), it's about **54%** of the score. Valence (0.4) has even less say, which makes the "sad songs never surface" problem worse.
+
+**Decision:** the change was reverted. The baseline (genre 1.5, energy 1.0) stays, because it gets more profiles right. A better next experiment would target the actual problems: case-insensitive label matching, synonym moods ("sad" ≈ "melancholy"), and raising valence instead of energy.
+
+### Earlier experiment (Phase 2): genre 2.0 → 1.5
+
+The original recipe had genre at 2.0. That made Gym Hero (intense, energy 0.93) the #2 pick for a "pop genre, chill mood" listener, purely because it is pop. Lowering genre to 1.5 drops it to #5 without changing the Chill Lofi or Deep Intense Rock rankings. Any genre weight between 1.0 and about 1.6 works. This change was kept and is part of the final recipe.
 
 ---
 
