@@ -21,16 +21,33 @@ Prompts:
 
 ## 3. How the Model Works  
 
-Explain your scoring approach in simple language.  
+Think of the recommender as a judge at a talent show who gives every song in the catalog a scorecard, then reads out the five highest scores.
 
-Prompts:  
+**What the judge looks at in each song:**
+- its **genre** (pop, lofi, rock…) and **mood** (happy, chill, intense…)
+- five sound measurements on a 0–1 scale:
+  - **energy:** calm to intense
+  - **acousticness:** electronic to acoustic
+  - **valence:** sad to happy
+  - **instrumentalness:** vocals to no vocals
+  - **tempo:** beats per minute
 
-- What features of each song are used (genre, energy, mood, etc.)  
-- What user preferences are considered  
-- How does the model turn those into a score  
-- What changes did you make from the starter logic  
+**What the listener tells it:** a favorite genre and mood, plus optional "close enough" alternatives (for example, a lofi fan might also accept ambient or jazz). They can also give a target for each sound measurement, such as "energy around 0.4". Anything the listener leaves out is simply ignored, so nobody is penalized for not having an opinion about tempo.
 
-Avoid code here. Pretend you are explaining the idea to a friend who does not program.
+**How the points add up:**
+1. **Genre bonus:** 1.5 points for the favorite genre, or half (0.75) for a "close enough" genre.
+2. **Mood bonus:** 1.0 point for the favorite mood, or 0.5 for a "close enough" mood.
+3. **Closeness points:** for each sound measurement, the nearer the song is to the listener's target, the more points it earns. A perfect match earns the full weight and a total opposite earns zero. Energy matters most (up to 1.0), then acousticness (0.6), valence (0.4), instrumentalness (0.2) and tempo (0.2).
+
+The best possible score is 4.9. Every point a song earns comes with a written reason, such as "mood match: chill (+1.00)", so you can always see *why* it was recommended.
+
+**Choosing the winners:** every song gets scored and the list is sorted from highest to lowest. The top five are shown. If the listener set an energy "dealbreaker" (for example, nothing above 0.9), songs over that line are removed before judging.
+
+**Changes from the starter logic:**
+- **More data:** the catalog grew from 10 to 18 songs, and a new instrumentalness measurement was added.
+- **Closeness, not size:** songs are rewarded for being *close* to what the listener wants rather than for having high or low values.
+- **Partial credit:** "close enough" genres and moods earn half points.
+- **Genre weight lowered from 2.0 to 1.5:** most genres appear only once in the catalog. At 2.0, a pop fan who wanted chill music was being handed an intense workout song just because it was labeled pop.
 
 ---
 
