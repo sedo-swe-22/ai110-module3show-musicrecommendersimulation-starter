@@ -11,7 +11,11 @@ Your goal is to:
 - Evaluate what your system gets right and wrong
 - Reflect on how this mirrors real world AI recommenders
 
-Replace this paragraph with your own summary of what your version does.
+**My version: TuneJudge 1.0.** It's a content-based recommender that runs from the command line. It reads an 18-song catalog from `data/songs.csv` and scores every song against a listener's profile:
+- **Label bonuses:** points for matching the favorite genre and mood, with half points for "close enough" ones.
+- **Closeness points:** more points the nearer a song's energy, acousticness, valence, instrumentalness and tempo are to the listener's targets.
+
+It then prints the top 5 with a score and a plain-language reason for every point earned. Run `python -m src.main` for the default profile, or `python -m src.main all` for 11 test profiles, including adversarial edge cases. The scoring recipe, stress tests, a weight experiment and a full [model card](model_card.md) document what it gets right, where it fails, and why.
 
 ---
 
@@ -809,28 +813,25 @@ The original recipe had genre at 2.0. That made Gym Hero (intense, energy 0.93) 
 
 ## Limitations and Risks
 
-Summarize some limitations of your recommender.
+- **Tiny, made-up catalog.** 18 songs with invented values. 13 of 15 genres have only one song, and no song falls between energy 0.55 and 0.75.
+- **Energy dominates.** Energy, acousticness and tempo move together, so most of the score measures "calm vs. loud". A "sad" request can still get a happy-sounding song if its energy fits.
+- **Labels are matched literally.** "Pop" ≠ "pop", and "sad" earns nothing even though "melancholy" exists.
+- **No variety control.** A lofi fan gets an all-lofi top 5, while a folk fan gets one match plus filler.
+- **No understanding of lyrics, language or listening history.** It takes the user's stated preferences at face value, and with an empty profile it returns arbitrary songs.
 
-Examples:
-
-- It only works on a tiny catalog
-- It does not understand lyrics or language
-- It might over favor one genre or mood
-
-You will go deeper on this in your model card.
+Details and evidence are in [model card §6](model_card.md#6-limitations-and-bias).
 
 ---
 
 ## Reflection
 
-Read and complete `model_card.md`:
+Full reflection: [**Model Card §9**](model_card.md#9-personal-reflection)
 
-[**Model Card**](model_card.md)
+**How recommenders turn data into predictions.** A recommender doesn't "know" music. It turns each song into a handful of numbers and labels, compares them with what the listener asked for, and adds up points. The ranking is just a sort. All the judgment lives in the weights: deciding that genre is worth 1.5 and happiness only 0.4 is a decision about what matters, even though it looks like math. Small weight changes can reorder results, and one #1 in testing won by only 0.01 points. A change can also make results *different* without making them *better*, which is why every experiment needs to be checked against real profiles.
 
-Write 1 to 2 paragraphs here about what you learned:
+**Where bias and unfairness show up.** Bias came from three places, not just the formula:
+- **The data:** most genres have a single song, so some listeners get rich results and others get filler.
+- **The features:** energy is effectively counted three times, so mood-driven listeners are underserved.
+- **The evaluation:** 7 of my 11 test profiles asked for loud music, which made one loud song look over-recommended.
 
-- about how recommenders turn data into predictions
-- about where bias or unfairness could show up in systems like this
-
-
-
+In a real app, the same effects would decide which artists get heard. Underrepresented genres, or listeners who describe their taste differently, could be quietly pushed aside without anyone choosing that.

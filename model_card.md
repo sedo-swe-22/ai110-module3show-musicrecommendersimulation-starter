@@ -2,20 +2,35 @@
 
 ## 1. Model Name  
 
-Give your model a short, descriptive name.  
-Example: **VibeFinder 1.0**  
+**TuneJudge 1.0**
+
+It works like a judge at a talent show: every song gets a scorecard, and the five highest scores win.
 
 ---
 
 ## 2. Intended Use  
 
-Describe what your recommender is designed to do and who it is for. 
+**Goal / task:** given a listener's taste, suggest the 5 songs from a small catalog that fit them best, and say *why* each one was picked.
 
-Prompts:  
+It doesn't predict whether someone will like a song in the future. It only measures how closely each song matches what the listener said they want.
 
-- What kind of recommendations does it generate  
-- What assumptions does it make about the user  
-- Is this for real users or classroom exploration  
+**What the listener provides:** a favorite genre and mood, optional "close enough" genres and moods, and target values for energy, acousticness, valence (how happy it sounds), instrumentalness and tempo. Every field is optional.
+
+**Assumptions it makes about the user:**
+- They can describe their taste in words and numbers.
+- Their taste doesn't change with time, context or activity.
+- They use the same labels the catalog uses (for example "pop", not "Pop").
+
+**Intended use:**
+- A classroom project for learning how content-based recommenders turn data into rankings.
+- Experimenting with weights and seeing how the rankings respond.
+- Showing how bias can creep into a simple scoring rule.
+
+**Not intended for:**
+- **Real users or a real music app.** The catalog is 18 made-up songs.
+- **Judging the quality of music or artists.** A low score means "doesn't match this profile", not "bad song".
+- **Decisions with consequences**, such as which artists get promoted or paid. Its biases (see section 6) would be unfair at that scale.
+- **Listeners with no stated preferences.** It returns arbitrary songs instead of saying "I need more information".
 
 ---
 
@@ -53,14 +68,26 @@ The best possible score is 4.9. Every point a song earns comes with a written re
 
 ## 4. Data  
 
-Describe the dataset the model uses.  
+**Size:** 18 songs in `data/songs.csv`. The starter had 10; I added 8 more to cover genres and moods it was missing.
 
-Prompts:  
+**Features per song:**
+- **Labels:** genre and mood. Each song has exactly one of each.
+- **Numbers from 0 to 1:** energy, acousticness, valence (how happy it sounds), danceability and instrumentalness. I added instrumentalness.
+- **Tempo:** in beats per minute, from 60 to 168.
 
-- How many songs are in the catalog  
-- What genres or moods are represented  
-- Did you add or remove data  
-- Are there parts of musical taste missing in the dataset  
+Danceability is loaded but not scored, because it mostly repeats valence and energy.
+
+**What's represented:**
+- **15 genres:** lofi, pop, rock, ambient, jazz, synthwave, indie pop, hip-hop, country, classical, edm, r&b, metal, reggae, folk.
+- **14 moods:** chill, happy, intense, relaxed, moody, focused, confident, nostalgic, melancholy, euphoric, romantic, angry, laid-back, wistful.
+
+**Limits of the data:**
+- **Most genres have just one song.** 13 of the 15 do; only lofi (3) and pop (2) repeat. Fans of most genres get one real match and then filler.
+- **Energy has a hole.** No song falls between 0.55 and 0.75, so medium-energy listeners have little to choose from.
+- **The values are invented,** not measured from real audio.
+- **Some moods are missing.** There's no "sad", for example; the closest is "melancholy".
+- **It's mostly Western, English-language genres.** There are no K-pop, Latin, Afrobeats or regional styles.
+- **Whole parts of taste are absent:** lyrics, language, era, artist popularity and listening history.
 
 ---
 
@@ -116,6 +143,12 @@ Prompts:
 - **Hand math:** I calculated several scores by hand and confirmed the code matches (e.g. Library Rain 4.807, Gym Hero 2.812 for pop/chill).
 - **Repetition count:** how many top 5s each song appears in, across all 11 profiles.
 - **Explaining #1:** I asked the AI assistant to explain step by step why a song ranked #1 and to find the smallest weight change that would flip it.
+- **Weight-shift experiment (energy 1.0 → 2.0, genre 1.5 → 0.75):** I reran all 11 profiles and compared them with the baseline. The full before/after output is in the README under "Experiments You Tried".
+  - **Better:** pop/happy, where the happy indie song now beats the intense workout song, and lofi-but-intense, where intense songs replace the calm lofi ones.
+  - **Worse:** Deep Intense Rock, where pop Gym Hero passes metal Iron Requiem, and pop-genre-chill-mood, which lost every pop song.
+  - **Unchanged:** the other 7 profiles.
+
+  The results were **different, not more accurate**, so I reverted to the baseline. Gym Hero's repetition barely moved (8 → 7 lists), which showed the repetition wasn't caused by the genre weight.
 
 ### Comparing profiles side by side
 
@@ -191,23 +224,29 @@ On top of that, Gym Hero is one of the loudest songs in the catalog, so it also 
 
 ## 8. Future Work  
 
-Ideas for how you would improve the model next.  
+1. **Smarter label matching.** Compare labels without caring about capitals ("Pop" = "pop"), and add a small synonym list ("sad" ≈ "melancholy", "chill" ≈ "laid-back"). This fixes two bugs found in testing without the user having to do anything.
 
-Prompts:  
+2. **Rebalance the numbers so energy doesn't dominate.** Energy, acousticness and tempo measure almost the same thing. I'd lower acousticness and tempo and give valence more weight, so a "sad" request gets sad-sounding songs, not just ones with the right energy.
 
-- Additional features or preferences  
-- Better ways to explain recommendations  
-- Improving diversity among the top results  
-- Handling more complex user tastes  
+3. **Add variety and honesty to the top 5.**
+   - **Variety:** allow at most one song per artist and two per genre, so a lofi fan also sees something new.
+   - **Honesty:** if the best score is very low (or the profile is empty or contradicts itself), say "I need more information" instead of showing random songs.
+
+**With more time:** a bigger catalog that fills the 0.55–0.75 energy gap, and learning from skips and replays so the system doesn't rely only on what the user types.
 
 ---
 
 ## 9. Personal Reflection  
 
-A few sentences about your experience.  
+**My biggest learning moment.** Gym Hero showed up in 8 of my 11 top-5 lists, and I was sure the genre weight was too strong. When I counted, it got the genre bonus in only half of those lists. It kept appearing because it's one of the loudest songs, and most of my test profiles asked for loud music. The bias was in my tests, not only in the model. Now I know that how you test a system can create the problem you think you're finding.
 
-Prompts:  
+**When I had to double-check the AI.** AI was fast and helpful, but I couldn't just trust it:
+- **I checked the math by hand.** I recomputed scores like Library Rain (4.807) myself to make sure the code really followed my recipe.
+- **A comment didn't match the plan.** A code comment said missing preferences would "renormalize" the other weights. My plan said they would simply be skipped. It had to be caught and fixed during the plan review, or the docs and the code would have disagreed.
+- **The AI used the wrong evidence.** Its first draft of the bias section used a quiet song as proof that energetic listeners were treated unfairly. That song never fit the request anyway, so the example proved nothing. The problem was real, but the evidence wasn't.
 
-- What you learned about recommender systems  
-- Something unexpected or interesting you discovered  
-- How this changed the way you think about music recommendation apps  
+**What surprised me.** The scoring is just a weighted sum of seven numbers. But when it prints "mood match: chill (+1.00)" next to each song, it feels thoughtful, almost like it understands me. The reasons make it seem smart. That makes me think real apps feel smart partly because of how they explain themselves, not only because of how they score.
+
+**What I'd try next.**
+1. **Smarter label matching:** ignore capital letters and add synonyms, so "Pop" matches "pop" and "sad" matches "melancholy".
+2. **Learning from listening:** use what people actually play and skip, not only what they type in.
