@@ -1,6 +1,6 @@
 import csv
 from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 # CSV columns that hold numbers; everything else (title, genre, ...) stays a string.
 FLOAT_COLUMNS = (
@@ -77,12 +77,33 @@ class Recommender:
         self.songs = songs
 
     def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
-        # TODO: Implement recommendation logic
-        return self.songs[:k]
+        """Return the top k Song objects for this user, best first (same logic as recommend_songs)."""
+        by_id = {song.id: song for song in self.songs}
+        ranked = recommend_songs(_profile_to_prefs(user), [asdict(s) for s in self.songs], k)
+        return [by_id[song["id"]] for song, _, _ in ranked]
 
     def explain_recommendation(self, user: UserProfile, song: Song) -> str:
-        # TODO: Implement explanation logic
-        return "Explanation placeholder"
+        """Return a readable 'score: reasons' string explaining how this song scored for the user."""
+        score, reasons = score_song(_profile_to_prefs(user), asdict(song))
+        return f"Score {score:.2f}: " + "; ".join(reasons)
+
+
+def _profile_to_prefs(user: UserProfile) -> Dict:
+    """Translate a UserProfile into the user_prefs dict that score_song expects."""
+    return {
+        "genre": user.favorite_genre,
+        "mood": user.favorite_mood,
+        "also_ok_genres": user.also_ok_genres,
+        "also_ok_moods": user.also_ok_moods,
+        "energy": user.target_energy,
+        "acousticness": user.target_acousticness,
+        "likes_acoustic": user.likes_acoustic,
+        "valence": user.target_valence,
+        "instrumentalness": user.target_instrumentalness,
+        "tempo_bpm": user.target_tempo_bpm,
+        "energy_tolerance": user.energy_tolerance,
+        "max_energy": user.max_energy,
+    }
 
 def load_songs(csv_path: str) -> List[Dict]:
     """Load songs.csv into a list of dicts, converting numeric columns to int/float."""
